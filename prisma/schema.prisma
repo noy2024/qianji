@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // 关联的账单记录
+  bills       Bill[]
+  // 关联的分类
+  categories  Category[]
+  // 关联的账户
+  accounts    Account[]
+  // 关联的预算
+  budgets     Budget[]
+}
+
+model Bill {
+  id          String    @id @default(cuid())
+  title       String    // 账单标题
+  amount      Float     // 金额
+  type        BillType  // 账单类型：收入、支出、投资等
+  description String?   // 描述
+  date        DateTime  // 账单日期
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // 关联用户
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联分类
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  
+  // 关联账户
+  accountId   String?
+  account     Account?  @relation(fields: [accountId], references: [id])
+  
+  // 添加索引
+  @@index([userId, date])
+  @@index([userId, type])
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String     // 分类名称
+  description String?    // 分类描述
+  color       String?    // 分类颜色
+  icon        String?    // 分类图标
+  type        BillType   // 分类类型
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // 关联用户
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联的账单
+  bills       Bill[]
+
+  // 关联的预算
+  budgets     Budget[]
+  
+  // 添加唯一约束
+  @@unique([name, userId])
+}
+
+model Budget {
+  id          String   @id @default(cuid())
+  amount      Float
+  month       Int
+  year        Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联用户
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 关联分类
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId, month, year])
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  name        String      // 账户名称
+  type        AccountType // 账户类型
+  balance     Float       @default(0) // 账户余额
+  description String?     // 账户描述
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // 关联用户
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联的账单
+  bills       Bill[]
+}
+
+enum BillType {
+  INCOME    // 收入
+  EXPENSE   // 支出
+  INVESTMENT // 投资
+  TRANSFER  // 转账
+}
+
+enum AccountType {
+  CASH      // 现金
+  BANK      // 银行账户
+  CREDIT    // 信用卡
+  INVESTMENT // 投资账户
+  OTHER     // 其他
+}
