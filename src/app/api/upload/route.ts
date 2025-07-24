@@ -35,52 +35,63 @@ export async function POST(req: NextRequest) {
         }
       });
       
-      // 批量创建账单记录
-      const createdBills = await Promise.all(
-        parsedBills.map(async (billData) => {
-          // 首先尝试找到或创建分类
-          let categoryId = null;
-          if (billData.category) {
-            const category = await prisma.category.upsert({
-              where: {
-                name_userId: {
-                  name: billData.category,
-                  userId: userId
-                }
-              },
-              update: {},
-              create: {
-                name: billData.category,
-                type: billData.type,
-                userId: userId
-              }
-            });
-            categoryId = category.id;
-          }
+      // 批量创建账单记录，增加去重逻辑
+      let createdCount = 0;
+      let skippedCount = 0;
 
-          // 创建账单记录
-          return await prisma.bill.create({
+      const billProcessingPromises = parsedBills.map(async (billData) => {
+        // 确保用户存在 (虽然在循环外已经有了，但为了安全可以保留)
+        const userId = 'cluser1';
+
+        // 1. 查找或创建分类
+        let categoryId = null;
+        if (billData.category) {
+          const category = await prisma.category.upsert({
+            where: { name_userId: { name: billData.category, userId: userId } },
+            update: {},
+            create: { name: billData.category, type: billData.type, userId: userId },
+          });
+          categoryId = category.id;
+        }
+
+        // 2. 检查账单是否已存在
+        const existingBill = await prisma.bill.findFirst({
+          where: {
+            userId: userId,
+            date: billData.date,
+            amount: billData.amount,
+            description: billData.description,
+          },
+        });
+
+        // 3. 如果不存在，则创建
+        if (!existingBill) {
+          await prisma.bill.create({
             data: {
               title: billData.title,
               amount: billData.amount,
               type: billData.type,
               description: billData.description,
-              date: billData.date.toISOString(),
+              date: billData.date,
               userId: userId,
               categoryId,
-              // accountId 暂时不设置，可以后续添加账户管理功能
-            }
+              // accountId 暂时不设置
+            },
           });
-        })
-      );
+          createdCount++;
+        } else {
+          skippedCount++;
+        }
+      });
+
+      await Promise.all(billProcessingPromises);
 
       return NextResponse.json({ 
         success: true, 
-        message: `成功导入 ${createdBills.length} 条账单记录`,
-        bills: createdBills,
+        message: `导入完成：成功新增 ${createdCount} 条记录，跳过 ${skippedCount} 条重复记录。`,
         summary: {
-          total: createdBills.length,
-          totalAmount: createdBills.reduce((sum, bill) => sum + bill.amount, 0),
+          totalImported: createdCount,
+          totalSkipped: skippedCount,
           platform: parsedBills[0]?.platform || 'unknown'
         }
       }, { status: 200 });
